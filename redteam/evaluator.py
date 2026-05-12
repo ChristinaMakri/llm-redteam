@@ -14,6 +14,7 @@ import json
 import os
 import re
 
+from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from langchain_openai import AzureChatOpenAI, ChatOpenAI
 
 from redteam.client import AgentResponse
@@ -170,22 +171,60 @@ Evaluate and return JSON:
 }}"""
 
 
+def _get_azure_ad_token() -> str:
+    """Get a bearer token for Azure OpenAI using service principal or default credentials."""
+    scope = "https://cognitiveservices.azure.com/.default"
+    tenant_id = os.environ.get("AZURE_TENANT_ID")
+    client_id = os.environ.get("AZURE_CLIENT_ID")
+    client_secret = os.environ.get("AZURE_CLIENT_SECRET")
+
+    if tenant_id and client_id and client_secret:
+        credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+    else:
+        credential = DefaultAzureCredential()
+
+    return credential.get_token(scope).token
+
+
 def _build_judge(full_model: bool = False) -> AzureChatOpenAI | ChatOpenAI:
-    """Build judge model — mini by default, full only when escalating."""
-    if os.environ.get("AZURE_OPENAI_API_KEY"):
-        deployment = (
-            os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
-            if full_model
-            else os.environ.get("AZURE_OPENAI_MINI_DEPLOYMENT", "gpt-4o-mini")
-        )
+    """
+    Build judge model — mini by default, full only when escalating.
+
+    Auth priority:
+      1. AZURE_OPENAI_API_KEY  → direct key (simplest)
+      2. AZURE_TENANT_ID + AZURE_CLIENT_ID + AZURE_CLIENT_SECRET → Azure AD token
+      3. OPENAI_API_KEY → standard OpenAI
+    """
+    endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+    api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-01")
+    deployment = (
+        os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
+        if full_model
+        else os.environ.get("AZURE_OPENAI_MINI_DEPLOYMENT",
+                            os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4o"))
+    )
+
+    if endpoint and os.environ.get("AZURE_OPENAI_API_KEY"):
         return AzureChatOpenAI(
-            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+            azure_endpoint=endpoint,
             api_key=os.environ["AZURE_OPENAI_API_KEY"],
             azure_deployment=deployment,
-            api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-01"),
+            api_version=api_version,
             temperature=0,
             max_tokens=200,
         )
+
+    if endpoint and os.environ.get("AZURE_TENANT_ID"):
+        token = _get_azure_ad_token()
+        return AzureChatOpenAI(
+            azure_endpoint=endpoint,
+            azure_ad_token=token,
+            azure_deployment=deployment,
+            api_version=api_version,
+            temperature=0,
+            max_tokens=200,
+        )
+
     # Standard OpenAI fallback
     model = "gpt-4o" if full_model else "gpt-4o-mini"
     return ChatOpenAI(
