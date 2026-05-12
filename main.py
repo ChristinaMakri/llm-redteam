@@ -1,0 +1,139 @@
+"""
+llm-redteam — CLI entry point.
+
+Usage examples:
+
+  # Run all attacks using settings from .env
+  uv run python main.py
+
+  # Point at a specific agent
+  uv run python main.py --agent-url http://localhost:2024 --assistant-id my-agent
+
+  # Load credentials from an existing agent project's .env
+  uv run python main.py --env-file ../agents-customer-subscriptions/.env
+
+  # Run only specific attack categories
+  uv run python main.py --categories direct_injection extraction encoding
+
+  # Quick single-run mode (cheaper, no consensus)
+  uv run python main.py --runs 1
+
+  # Full run with custom output directory
+  uv run python main.py --runs 3 --output reports/
+"""
+
+from __future__ import annotations
+
+import asyncio
+import sys
+from pathlib import Path
+from typing import Annotated
+
+import typer
+from dotenv import load_dotenv
+from rich.console import Console
+
+from redteam.client import AgentClient
+from redteam.evaluator import Evaluator
+from redteam.models import AttackCategory
+from redteam.report import print_report, save_json
+from redteam.runner import run_session
+
+app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
+console = Console()
+
+VALID_CATEGORIES = [c.value for c in AttackCategory]
+
+
+@app.command()
+def main(
+    env_file: Annotated[
+        str | None,
+        typer.Option("--env-file", help="Path to .env file (default: .env in current directory)"),
+    ] = None,
+    agent_url: Annotated[
+        str | None,
+        typer.Option("--agent-url", help="LangGraph dev server URL (overrides AGENT_URL in .env)"),
+    ] = None,
+    assistant_id: Annotated[
+        str | None,
+        typer.Option("--assistant-id", help="LangGraph assistant/graph ID (overrides AGENT_ASSISTANT_ID in .env)"),
+    ] = None,
+    categories: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--categories",
+            help=f"Attack categories to run. Valid values: {', '.join(VALID_CATEGORIES)}",
+        ),
+    ] = None,
+    runs: Annotated[
+        int,
+        typer.Option("--runs", min=1, max=5, help="Consensus runs per attack (default 3, use 1 for quick/cheap mode)"),
+    ] = 3,
+    concurrency: Annotated[
+        int,
+        typer.Option("--concurrency", min=1, max=10, help="Max concurrent agent calls (default 3)"),
+    ] = 3,
+    output: Annotated[
+        str,
+        typer.Option("--output", help="Directory to save the JSON report (default: reports/)"),
+    ] = "reports",
+) -> None:
+    # Load environment
+    env_path = Path(env_file) if env_file else Path(".env")
+    if env_path.exists():
+        load_dotenv(env_path, override=True)
+        console.print(f"[dim]Loaded env from {env_path}[/]")
+    else:
+        console.print(f"[yellow]Warning: {env_path} not found — relying on shell environment.[/]")
+
+    # Validate categories
+    selected_categories: list[AttackCategory] | None = None
+    if categories:
+        invalid = [c for c in categories if c not in VALID_CATEGORIES]
+        if invalid:
+            console.print(f"[red]Unknown categories: {', '.join(invalid)}[/]")
+            console.print(f"Valid options: {', '.join(VALID_CATEGORIES)}")
+            raise typer.Exit(1)
+        selected_categories = [AttackCategory(c) for c in categories]
+
+    # Build client
+    client = AgentClient.from_env()
+    if agent_url:
+        client._url = agent_url
+    if assistant_id:
+        client._assistant_id = assistant_id
+
+    evaluator = Evaluator()
+
+    console.print()
+    console.print(f"  Target agent : [cyan]{client._url}[/]  /  [cyan]{client._assistant_id}[/]")
+    console.print(f"  Categories   : {', '.join(c.value for c in (selected_categories or list(AttackCategory)))}")
+    console.print(f"  Consensus    : {runs} run(s) per attack  |  concurrency: {concurrency}")
+    console.print()
+
+    # Run
+    report = asyncio.run(
+        run_session(
+            client=client,
+            evaluator=evaluator,
+            categories=selected_categories,
+            consensus_runs=runs,
+            concurrency=concurrency,
+        )
+    )
+
+    # Print terminal report
+    print_report(report)
+
+    # Save JSON
+    path = save_json(report, output_dir=output)
+    console.print(f"\n[dim]Full report saved to: {path}[/]")
+
+    # Exit with non-zero code if critical vulnerabilities found
+    if any(r.vulnerability_confirmed for r in report.results):
+        raise typer.Exit(2)
+
+
+if __name__ == "__main__":
+    app()
