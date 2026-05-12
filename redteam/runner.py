@@ -18,10 +18,12 @@ from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
+from redteam.attacks.business_logic import get_attacks as bl_attacks
 from redteam.attacks.competing_objectives import get_attacks as co_attacks
 from redteam.attacks.direct_injection import get_attacks as di_attacks
 from redteam.attacks.encoding import get_attacks as en_attacks
 from redteam.attacks.extraction import get_attacks as ex_attacks
+from redteam.attacks.greek import get_attacks as el_attacks
 from redteam.attacks.indirect_injection import get_attacks as ii_attacks
 from redteam.attacks.payload_splitting import get_attacks as ps_attacks
 from redteam.attacks.role_hijacking import get_attacks as rh_attacks
@@ -41,6 +43,8 @@ ALL_MODULES: dict[AttackCategory, callable] = {
     AttackCategory.COMPETING_OBJECTIVES: co_attacks,
     AttackCategory.PAYLOAD_SPLITTING:    ps_attacks,
     AttackCategory.INDIRECT_INJECTION:   ii_attacks,
+    AttackCategory.GREEK_LANGUAGE:       el_attacks,
+    AttackCategory.BUSINESS_LOGIC:       bl_attacks,
 }
 
 

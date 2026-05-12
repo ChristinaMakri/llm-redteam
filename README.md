@@ -2,7 +2,7 @@
 
 Automated red-teaming framework for prompt-level attacks against [LangGraph](https://github.com/langchain-ai/langgraph) agents.
 
-Runs a comprehensive suite of **102 attacks** across 8 categories against any running LangGraph agent, evaluates each response with a tiered multi-signal judge, and proposes concrete system prompt improvements based on findings.
+Runs a comprehensive suite of **136 attacks** across 10 categories against any running LangGraph agent, evaluates each response with a tiered multi-signal judge, and proposes concrete system prompt improvements based on findings.
 
 ---
 
@@ -10,14 +10,16 @@ Runs a comprehensive suite of **102 attacks** across 8 categories against any ru
 
 | Category | Attacks | Description |
 |---|---|---|
-| Direct Injection | 18 | Explicit instruction overrides, delimiter tricks, authority framing |
+| Direct Injection | 22 | Explicit instruction overrides, delimiter tricks, authority framing, context flooding |
 | Role Hijacking | 13 | DAN, alter ego, simulator, fictional character personas |
-| Extraction | 18 | Verbatim repeat, indirect probes, format tricks, social engineering |
+| Extraction | 26 | Verbatim repeat, indirect probes, format tricks, social engineering, PII extraction |
 | Encoding | 13 | Base64, ROT13, leetspeak, Unicode lookalikes, token splitting |
 | Virtualization | 12 | Story, hypothetical, research paper, sandbox framing |
 | Competing Objectives | 10 | Logical conflicts exploiting helpfulness, honesty, autonomy |
 | Payload Splitting | 9 | Multi-turn attacks split across 2–4 messages |
 | Indirect Injection | 9 | Instructions hidden in documents, API responses, structured data |
+| Greek Language | 12 | DAN, extraction, authority framing, emotional pressure — all in Greek |
+| Business Logic | 10 | Confirmation bypass, cross-customer data probes, privilege escalation |
 
 ---
 

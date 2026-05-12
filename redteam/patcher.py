@@ -80,7 +80,10 @@ Return JSON:
 # Repo discovery
 # ---------------------------------------------------------------------------
 
-_SKIP_DIRS = {".venv", "__pycache__", "node_modules", ".git", "sandbox", "mynbg-sandbox"}
+_SKIP_DIRS = {
+    ".venv", "__pycache__", "node_modules", ".git",
+    "sandbox", "mynbg-sandbox", ".claude", "docs", "tests",
+}
 _MAX_PER_FILE = 5000
 _MAX_TOTAL = 18000
 
@@ -92,9 +95,10 @@ def _discover_repo_context(repo_path: str) -> dict[str, str]:
 
     Priority order (each group fills remaining budget):
       1. langgraph.json — graph structure
-      2. All .md files outside skip dirs — prompts, docs
-      3. Python files with "prompt" or "tool" in their path — tool/prompt definitions
-      4. JSON config files (agent_config, settings) outside skip dirs
+      2. .md files in dirs named prompts/assets/system — highest-value targets
+      3. Remaining .md files outside skip dirs
+      4. Python files with "prompt" or "tool" in their path
+      5. JSON config files (agent_config, settings)
     """
     root = Path(repo_path)
     found: dict[str, str] = {}
@@ -105,39 +109,46 @@ def _discover_repo_context(repo_path: str) -> dict[str, str]:
 
     def _add(path: Path, limit: int = _MAX_PER_FILE) -> None:
         nonlocal total
-        if total >= _MAX_TOTAL:
+        if path in _added or total >= _MAX_TOTAL:
             return
         budget = min(limit, _MAX_TOTAL - total)
         text = path.read_text(encoding="utf-8", errors="replace")[:budget]
         rel = str(path.relative_to(root))
         found[rel] = text
+        _added.add(path)
         total += len(text)
+
+    _added: set[Path] = set()
 
     # 1. langgraph.json
     lj = root / "langgraph.json"
     if lj.exists():
         _add(lj, limit=1500)
 
-    # 2. All .md files (prompts, system prompts, guides)
+    # 2. .md files in dirs explicitly named prompts / assets / system
     for f in sorted(root.rglob("*.md")):
         if _skip(f):
             continue
-        _add(f)
+        if any(part.lower() in {"prompts", "assets", "system"} for part in f.parts):
+            _add(f)
 
-    # 3. Python files with "prompt" or "tool" in their path
+    # 3. Remaining .md files (catch other layouts)
+    for f in sorted(root.rglob("*.md")):
+        if not _skip(f):
+            _add(f)
+
+    # 4. Python files with "prompt" or "tool" in their path
     for f in sorted(root.rglob("*.py")):
         if _skip(f):
             continue
-        parts_lower = f.as_posix().lower()
-        if "prompt" in parts_lower or "tool" in parts_lower:
+        if any(k in f.as_posix().lower() for k in ("prompt", "tool")):
             _add(f)
 
-    # 4. JSON config files (agent_config, settings)
+    # 5. JSON config files
     for f in sorted(root.rglob("*.json")):
         if _skip(f):
             continue
-        name = f.stem.lower()
-        if any(k in name for k in ("agent_config", "settings", "config")):
+        if any(k in f.stem.lower() for k in ("agent_config", "settings", "config")):
             _add(f, limit=3000)
 
     return found

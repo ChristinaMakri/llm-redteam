@@ -23,6 +23,8 @@ class AttackCategory(str, Enum):
     COMPETING_OBJECTIVES = "competing_objectives"
     PAYLOAD_SPLITTING = "payload_splitting"
     INDIRECT_INJECTION = "indirect_injection"
+    GREEK_LANGUAGE = "greek_language"
+    BUSINESS_LOGIC = "business_logic"
 
 
 class AttackGoal(str, Enum):
