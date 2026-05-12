@@ -15,17 +15,19 @@ Usage examples:
   # Run only specific attack categories
   uv run python main.py --categories direct_injection extraction encoding
 
-  # Quick single-run mode (cheaper, no consensus)
-  uv run python main.py --runs 1
+  # Adaptive confidence threshold (default 0.80, higher = more thorough)
+  uv run python main.py --confidence 0.90
+
+  # AI-generated patches based on actual agent prompt files
+  uv run python main.py --ai-patches --repo-path ../my-agent/
 
   # Full run with custom output directory
-  uv run python main.py --runs 3 --output reports/
+  uv run python main.py --output reports/
 """
 
 from __future__ import annotations
 
 import asyncio
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -69,7 +71,7 @@ def main(
     ] = None,
     confidence: Annotated[
         float,
-        typer.Option("--confidence", min=0.5, max=1.0, help="Confidence threshold to stop running an attack (default 0.80). Higher = more runs, lower = cheaper."),
+        typer.Option("--confidence", min=0.5, max=1.0, help="Stop running an attack when confidence reaches this threshold (default 0.80). Higher = more thorough, lower = cheaper."),
     ] = 0.80,
     max_runs: Annotated[
         int,
@@ -125,28 +127,19 @@ def main(
     console.print(f"  Confidence   : {confidence:.0%} threshold  |  max {max_runs} runs  |  concurrency: {concurrency}")
     console.print()
 
-    # Run
-    report = asyncio.run(
-        run_session(
+    # Run everything in a single event loop
+    report, patches = asyncio.run(
+        _run_all(
             client=client,
             evaluator=evaluator,
-            categories=selected_categories,
-            confidence_threshold=confidence,
+            selected_categories=selected_categories,
+            confidence=confidence,
             max_runs=max_runs,
             concurrency=concurrency,
+            ai_patches=ai_patches,
+            repo_path=repo_path,
         )
     )
-
-    # Generate targeted patches if requested
-    patches: list[dict] = []
-    if ai_patches and report.confirmed_vulnerabilities:
-        if repo_path:
-            console.print(f"[dim]Generating file-specific patches from {repo_path} ...[/]")
-        else:
-            console.print("[dim]Generating targeted patch suggestions...[/]")
-        patches = asyncio.run(generate_ai_patches(report, repo_path=repo_path))
-        if not patches:
-            console.print("[yellow]AI patch generation failed — falling back to generic patches.[/]")
 
     # Print terminal report
     print_report(report, ai_patches=patches or None)
@@ -155,9 +148,40 @@ def main(
     path = save_json(report, output_dir=output, ai_patches=patches or None)
     console.print(f"\n[dim]Full report saved to: {path}[/]")
 
-    # Exit with non-zero code if critical vulnerabilities found
     if any(r.vulnerability_confirmed for r in report.results):
         raise typer.Exit(2)
+
+
+async def _run_all(
+    client: AgentClient,
+    evaluator: Evaluator,
+    selected_categories,
+    confidence: float,
+    max_runs: int,
+    concurrency: int,
+    ai_patches: bool,
+    repo_path: str | None,
+):
+    report = await run_session(
+        client=client,
+        evaluator=evaluator,
+        categories=selected_categories,
+        confidence_threshold=confidence,
+        max_runs=max_runs,
+        concurrency=concurrency,
+    )
+
+    patches: list[dict] = []
+    if ai_patches and report.confirmed_vulnerabilities:
+        if repo_path:
+            console.print(f"[dim]Generating file-specific patches from {repo_path} ...[/]")
+        else:
+            console.print("[dim]Generating targeted patch suggestions...[/]")
+        patches = await generate_ai_patches(report, repo_path=repo_path)
+        if not patches:
+            console.print("[yellow]AI patch generation failed — falling back to generic patches.[/]")
+
+    return report, patches
 
 
 if __name__ == "__main__":
