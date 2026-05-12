@@ -181,36 +181,9 @@ def _format_findings(confirmed: list[AttackResult]) -> str:
 # Public entry point
 # ---------------------------------------------------------------------------
 
-async def generate_ai_patches(
-    report: RedTeamReport,
-    repo_path: str | None = None,
-) -> list[dict]:
-    """
-    Generate targeted patch suggestions for confirmed vulnerabilities.
-
-    With repo_path: reads actual prompt files, returns file-specific patches
-    (file, location, patch_text).
-
-    Without repo_path: returns generic targeted suggestions (targeted_patch).
-    Falls back to empty list on any error — caller shows generic patches.
-    """
-    confirmed = report.confirmed_vulnerabilities
-    if not confirmed:
-        return []
-
-    findings_text = _format_findings(confirmed)
-
-    if repo_path:
-        repo_context = _discover_repo_context(repo_path)
-        prompt = _PATCHER_PROMPT_WITH_REPO.format(
-            repo_context=_format_repo_context(repo_context),
-            findings=findings_text,
-        )
-    else:
-        prompt = _PATCHER_PROMPT_GENERIC.format(findings=findings_text)
-
+async def _call_patcher(prompt: str) -> list[dict]:
+    """Single patcher LLM call — returns patches list or [] on failure."""
     judge = _build_judge(full_model=True, max_tokens=1500)
-
     try:
         result = await judge.ainvoke([
             {"role": "system", "content": _PATCHER_SYSTEM},
@@ -229,3 +202,52 @@ async def generate_ai_patches(
         return data.get("patches", [])
     except (json.JSONDecodeError, AttributeError):
         return []
+
+
+async def generate_ai_patches(
+    report: RedTeamReport,
+    repo_path: str | None = None,
+) -> list[dict]:
+    """
+    Generate targeted patch suggestions for confirmed vulnerabilities.
+
+    Findings are batched by severity tier so that lower-severity findings
+    are not squeezed out by token limits:
+      Batch 1: CRITICAL + HIGH
+      Batch 2: MEDIUM + LOW (separate call with its own token budget)
+
+    With repo_path: reads actual prompt files, returns file-specific patches.
+    Without repo_path: returns generic targeted suggestions.
+    Falls back to empty list on any error.
+    """
+    from redteam.models import Severity
+
+    confirmed = report.confirmed_vulnerabilities
+    if not confirmed:
+        return []
+
+    high_tier = [r for r in confirmed if r.consensus_severity in (Severity.CRITICAL, Severity.HIGH)]
+    low_tier  = [r for r in confirmed if r.consensus_severity in (Severity.MEDIUM, Severity.LOW)]
+
+    repo_context_str = ""
+    if repo_path:
+        repo_context_str = _format_repo_context(_discover_repo_context(repo_path))
+
+    def _build_prompt(batch: list) -> str:
+        findings_text = _format_findings(batch)
+        if repo_path:
+            return _PATCHER_PROMPT_WITH_REPO.format(
+                repo_context=repo_context_str,
+                findings=findings_text,
+            )
+        return _PATCHER_PROMPT_GENERIC.format(findings=findings_text)
+
+    patches: list[dict] = []
+
+    if high_tier:
+        patches.extend(await _call_patcher(_build_prompt(high_tier)))
+
+    if low_tier:
+        patches.extend(await _call_patcher(_build_prompt(low_tier)))
+
+    return patches
