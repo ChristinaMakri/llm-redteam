@@ -116,6 +116,10 @@ uv run python main.py --categories direct_injection extraction encoding
 # Custom agent URL and assistant ID
 uv run python main.py --agent-url http://localhost:2024 --assistant-id my-graph
 
+# AI-generated targeted patches — analyses each specific finding and proposes
+# concrete system prompt additions (uses one extra LLM call after the run)
+uv run python main.py --ai-patches
+
 # All options
 uv run python main.py --help
 ```

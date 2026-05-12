@@ -36,6 +36,7 @@ from rich.console import Console
 from redteam.client import AgentClient
 from redteam.evaluator import Evaluator
 from redteam.models import AttackCategory
+from redteam.patcher import generate_ai_patches
 from redteam.report import print_report, save_json
 from redteam.runner import run_session
 
@@ -78,6 +79,10 @@ def main(
         str,
         typer.Option("--output", help="Directory to save the JSON report (default: reports/)"),
     ] = "reports",
+    ai_patches: Annotated[
+        bool,
+        typer.Option("--ai-patches/--no-ai-patches", help="Generate targeted patch suggestions using the LLM (costs extra tokens)"),
+    ] = False,
 ) -> None:
     # Load environment
     env_path = Path(env_file) if env_file else Path(".env")
@@ -123,11 +128,19 @@ def main(
         )
     )
 
+    # Generate targeted patches if requested
+    patches: list[dict] = []
+    if ai_patches and report.confirmed_vulnerabilities:
+        console.print("[dim]Generating targeted patch suggestions...[/]")
+        patches = asyncio.run(generate_ai_patches(report))
+        if not patches:
+            console.print("[yellow]AI patch generation failed — falling back to generic patches.[/]")
+
     # Print terminal report
-    print_report(report)
+    print_report(report, ai_patches=patches or None)
 
     # Save JSON
-    path = save_json(report, output_dir=output)
+    path = save_json(report, output_dir=output, ai_patches=patches or None)
     console.print(f"\n[dim]Full report saved to: {path}[/]")
 
     # Exit with non-zero code if critical vulnerabilities found

@@ -119,12 +119,12 @@ _PATCHES: dict[AttackCategory, str] = {
 # Terminal report
 # ---------------------------------------------------------------------------
 
-def print_report(report: RedTeamReport) -> None:
+def print_report(report: RedTeamReport, ai_patches: list[dict] | None = None) -> None:
     """Print the full report to the terminal."""
     _print_header(report)
     _print_summary(report)
     _print_findings(report)
-    _print_patches(report)
+    _print_patches(report, ai_patches)
 
 
 def _print_header(report: RedTeamReport) -> None:
@@ -202,28 +202,47 @@ def _print_findings(report: RedTeamReport) -> None:
                 console.print(f"    [bold red]Tools triggered: {tools}[/]")
 
 
-def _print_patches(report: RedTeamReport) -> None:
+def _print_patches(report: RedTeamReport, ai_patches: list[dict] | None = None) -> None:
     if not report.confirmed_vulnerabilities:
         return
 
-    affected_cats = {r.attack.category for r in report.confirmed_vulnerabilities}
     console.print()
     console.print(Rule("[bold]Improvement Proposals[/]", style="dim"))
-    console.print("[dim]Copy the relevant patches into your agent's system prompt.[/]\n")
 
-    for cat in AttackCategory:
-        if cat not in affected_cats:
-            continue
-        patch = _PATCHES.get(cat)
-        if patch:
-            console.print(Panel(patch, border_style="dim cyan", padding=(0, 1)))
+    if ai_patches:
+        console.print("[dim]Targeted patches — generated from your specific findings.[/]\n")
+        for patch in ai_patches:
+            name = patch.get("attack_name") or patch.get("attack_id", "")
+            text = patch.get("targeted_patch", "").strip()
+            if text:
+                console.print(Panel(
+                    f"[bold]{name}[/]\n\n{text}",
+                    border_style="dim cyan",
+                    padding=(0, 1),
+                ))
+    else:
+        affected_cats = {r.attack.category for r in report.confirmed_vulnerabilities}
+        console.print(
+            "[dim]Generic patches per affected category. "
+            "Run with [bold]--ai-patches[/] for targeted suggestions.[/]\n"
+        )
+        for cat in AttackCategory:
+            if cat not in affected_cats:
+                continue
+            patch = _PATCHES.get(cat)
+            if patch:
+                console.print(Panel(patch, border_style="dim cyan", padding=(0, 1)))
 
 
 # ---------------------------------------------------------------------------
 # JSON export
 # ---------------------------------------------------------------------------
 
-def save_json(report: RedTeamReport, output_dir: str = "reports") -> Path:
+def save_json(
+    report: RedTeamReport,
+    output_dir: str = "reports",
+    ai_patches: list[dict] | None = None,
+) -> Path:
     """Save the full report as a JSON file and return the path."""
     Path(output_dir).mkdir(exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -236,6 +255,7 @@ def save_json(report: RedTeamReport, output_dir: str = "reports") -> Path:
         "total_attacks": report.total_attacks,
         "overall_risk": report.overall_risk.value,
         "confirmed_vulnerabilities": len(report.confirmed_vulnerabilities),
+        "ai_patches": ai_patches or [],
         "results": [
             {
                 "attack": {
