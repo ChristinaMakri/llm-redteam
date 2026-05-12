@@ -187,6 +187,34 @@ Then register it in `redteam/runner.py` by adding it to `ALL_MODULES`.
 
 ---
 
+## Claude Code skill (`/redteam`)
+
+The repo includes a Claude Code slash command at `.claude/commands/redteam.md`.
+
+When invoked as `/redteam` inside an agent project, Claude will:
+1. Detect the running LangGraph dev server automatically
+2. Ask quick (1 run) or full (3 runs) mode
+3. Run the framework against your agent
+4. Summarize findings in the conversation
+5. Offer to apply prompt patches directly to your system prompt
+
+**Install globally (available in any project):**
+
+```bash
+# 1. Set the path in your shell profile (~/.bashrc or ~/.zshrc)
+export LLM_REDTEAM_PATH=/path/to/llm-redteam
+
+# 2. Symlink the skill to your global Claude commands directory
+mkdir -p ~/.claude/commands
+ln -s $LLM_REDTEAM_PATH/.claude/commands/redteam.md ~/.claude/commands/redteam.md
+```
+
+After restarting Claude Code, `/redteam` is available in any project.
+
+**Update:** since it's a symlink, `git pull` in the llm-redteam directory is all you need — the skill updates automatically.
+
+---
+
 ## Scope and limitations
 
 This framework tests **black-box, prompt-level attacks** — the most common real-world threat surface. It does not cover:
