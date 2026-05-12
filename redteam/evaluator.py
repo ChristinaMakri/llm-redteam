@@ -189,7 +189,7 @@ def _get_azure_ad_token() -> str:
     return credential.get_token(scope).token
 
 
-def _build_judge(full_model: bool = False) -> AzureChatOpenAI | ChatOpenAI:
+def _build_judge(full_model: bool = False, max_tokens: int = 200) -> AzureChatOpenAI | ChatOpenAI:
     """
     Build judge model — mini by default, full only when escalating.
 
@@ -214,7 +214,7 @@ def _build_judge(full_model: bool = False) -> AzureChatOpenAI | ChatOpenAI:
             azure_deployment=deployment,
             api_version=api_version,
             temperature=0,
-            max_tokens=200,
+            max_tokens=max_tokens,
         )
 
     if endpoint and os.environ.get("AZURE_TENANT_ID"):
@@ -225,7 +225,7 @@ def _build_judge(full_model: bool = False) -> AzureChatOpenAI | ChatOpenAI:
             azure_deployment=deployment,
             api_version=api_version,
             temperature=0,
-            max_tokens=200,
+            max_tokens=max_tokens,
         )
 
     # Standard OpenAI fallback
@@ -234,7 +234,7 @@ def _build_judge(full_model: bool = False) -> AzureChatOpenAI | ChatOpenAI:
         api_key=os.environ["OPENAI_API_KEY"],
         model=model,
         temperature=0,
-        max_tokens=200,
+        max_tokens=max_tokens,
     )
 
 

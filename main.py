@@ -83,6 +83,10 @@ def main(
         bool,
         typer.Option("--ai-patches/--no-ai-patches", help="Generate targeted patch suggestions using the LLM (costs extra tokens)"),
     ] = False,
+    repo_path: Annotated[
+        str | None,
+        typer.Option("--repo-path", help="Path to the agent's repo — enables file-specific patches against actual prompt files"),
+    ] = None,
 ) -> None:
     # Load environment
     env_path = Path(env_file) if env_file else Path(".env")
@@ -131,8 +135,11 @@ def main(
     # Generate targeted patches if requested
     patches: list[dict] = []
     if ai_patches and report.confirmed_vulnerabilities:
-        console.print("[dim]Generating targeted patch suggestions...[/]")
-        patches = asyncio.run(generate_ai_patches(report))
+        if repo_path:
+            console.print(f"[dim]Generating file-specific patches from {repo_path} ...[/]")
+        else:
+            console.print("[dim]Generating targeted patch suggestions...[/]")
+        patches = asyncio.run(generate_ai_patches(report, repo_path=repo_path))
         if not patches:
             console.print("[yellow]AI patch generation failed — falling back to generic patches.[/]")
 

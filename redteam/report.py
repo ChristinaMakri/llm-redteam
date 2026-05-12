@@ -210,16 +210,40 @@ def _print_patches(report: RedTeamReport, ai_patches: list[dict] | None = None) 
     console.print(Rule("[bold]Improvement Proposals[/]", style="dim"))
 
     if ai_patches:
-        console.print("[dim]Targeted patches — generated from your specific findings.[/]\n")
+        is_file_specific = any("file" in p for p in ai_patches)
+        if is_file_specific:
+            console.print("[dim]File-specific patches — apply directly to the files shown.[/]\n")
+        else:
+            console.print("[dim]Targeted patches — generated from your specific findings.[/]\n")
+
         for patch in ai_patches:
             name = patch.get("attack_name") or patch.get("attack_id", "")
-            text = patch.get("targeted_patch", "").strip()
-            if text:
-                console.print(Panel(
-                    f"[bold]{name}[/]\n\n{text}",
-                    border_style="dim cyan",
-                    padding=(0, 1),
-                ))
+
+            if "file" in patch:
+                # File-specific patch: show file path, location, and patch text
+                file_path = patch.get("file", "")
+                location = patch.get("location", "")
+                patch_text = patch.get("patch_text", "").strip()
+                reasoning = patch.get("reasoning", "").strip()
+                if patch_text:
+                    body = (
+                        f"[bold]{name}[/]\n"
+                        f"[cyan]File:[/] {file_path}\n"
+                        f"[cyan]Where:[/] {location}\n"
+                    )
+                    if reasoning:
+                        body += f"[dim]{reasoning}[/]\n"
+                    body += f"\n{patch_text}"
+                    console.print(Panel(body, border_style="dim cyan", padding=(0, 1)))
+            else:
+                # Generic targeted patch
+                text = patch.get("targeted_patch", "").strip()
+                if text:
+                    console.print(Panel(
+                        f"[bold]{name}[/]\n\n{text}",
+                        border_style="dim cyan",
+                        padding=(0, 1),
+                    ))
     else:
         affected_cats = {r.attack.category for r in report.confirmed_vulnerabilities}
         console.print(
