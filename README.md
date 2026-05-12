@@ -4,6 +4,8 @@ Automated red-teaming framework for prompt-level attacks against [LangGraph](htt
 
 Runs a comprehensive suite of **136 attacks** across 10 categories against any running LangGraph agent, evaluates each response with a tiered multi-signal judge, and proposes concrete system prompt improvements based on findings.
 
+**Attack coverage:** 8 categories are universal (any agent, any language). 2 categories are domain-specific extensions targeting banking/financial assistants: Greek-language attacks and business logic attacks (confirmation bypass, cross-customer data probes, privilege escalation). Skip them with `--categories` if your agent is outside this domain.
+
 ---
 
 ## What it tests
@@ -18,8 +20,10 @@ Runs a comprehensive suite of **136 attacks** across 10 categories against any r
 | Competing Objectives | 10 | Logical conflicts exploiting helpfulness, honesty, autonomy |
 | Payload Splitting | 9 | Multi-turn attacks split across 2–4 messages |
 | Indirect Injection | 9 | Instructions hidden in documents, API responses, structured data |
-| Greek Language | 12 | DAN, extraction, authority framing, emotional pressure — all in Greek |
-| Business Logic | 10 | Confirmation bypass, cross-customer data probes, privilege escalation |
+| Greek Language | 12 | DAN, extraction, authority framing, emotional pressure — all in Greek ⚑ |
+| Business Logic | 10 | Confirmation bypass, cross-customer data probes, privilege escalation ⚑ |
+
+⚑ Banking/financial domain extension — skip with `--categories` if not applicable.
 
 ---
 
@@ -27,7 +31,7 @@ Runs a comprehensive suite of **136 attacks** across 10 categories against any r
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Attack Suite (102 attacks)                     │
+│  Attack Suite (136 attacks)                     │
 │         ↓                                       │
 │  AgentClient → LangGraph dev server             │
 │         ↓                                       │
@@ -228,6 +232,8 @@ This framework tests **black-box, prompt-level attacks** — the most common rea
 - Gradient-based adversarial inputs (requires white-box model access)
 - Training data poisoning (requires access to the training pipeline)
 - Sophisticated long-horizon multi-session attacks
+
+The Greek-language and business logic categories are tailored for banking/financial agents. If your agent operates in a different domain, you can skip them via `--categories` and add your own domain-specific attacks (see [Adding custom attacks](#adding-custom-attacks)).
 
 No automated tool catches everything. Use this alongside human red-teaming for comprehensive coverage.
 
