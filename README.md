@@ -1,0 +1,204 @@
+# llm-redteam
+
+Automated red-teaming framework for prompt-level attacks against [LangGraph](https://github.com/langchain-ai/langgraph) agents.
+
+Runs a comprehensive suite of **102 attacks** across 8 categories against any running LangGraph agent, evaluates each response with a tiered multi-signal judge, and proposes concrete system prompt improvements based on findings.
+
+---
+
+## What it tests
+
+| Category | Attacks | Description |
+|---|---|---|
+| Direct Injection | 18 | Explicit instruction overrides, delimiter tricks, authority framing |
+| Role Hijacking | 13 | DAN, alter ego, simulator, fictional character personas |
+| Extraction | 18 | Verbatim repeat, indirect probes, format tricks, social engineering |
+| Encoding | 13 | Base64, ROT13, leetspeak, Unicode lookalikes, token splitting |
+| Virtualization | 12 | Story, hypothetical, research paper, sandbox framing |
+| Competing Objectives | 10 | Logical conflicts exploiting helpfulness, honesty, autonomy |
+| Payload Splitting | 9 | Multi-turn attacks split across 2–4 messages |
+| Indirect Injection | 9 | Instructions hidden in documents, API responses, structured data |
+
+---
+
+## How it works
+
+```
+┌─────────────────────────────────────────────────┐
+│  Attack Suite (102 attacks)                     │
+│         ↓                                       │
+│  AgentClient → LangGraph dev server             │
+│         ↓                                       │
+│  Tiered Evaluator                               │
+│    Tier 1: Deterministic checks  (free)         │
+│    Tier 2: Mini judge            (cheap)        │
+│    Tier 3: Full judge            (borderline only) │
+│         ↓                                       │
+│  Report: terminal + JSON + prompt patches       │
+└─────────────────────────────────────────────────┘
+```
+
+**Cost control:** deterministic checks (regex/keyword) run first at no cost. The LLM judge is only called for uncertain cases, using a small model by default and escalating to a full model only for borderline scores (4–6). An early-exit strategy skips remaining consensus runs when a verdict is already confident — reducing LLM calls by 40–60% in practice.
+
+---
+
+## Requirements
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- A running LangGraph dev server (`uv run langgraph dev`)
+- An LLM for the judge model: Azure OpenAI or standard OpenAI
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/ChristinaMakri/llm-redteam.git
+cd llm-redteam
+uv sync
+```
+
+---
+
+## Configuration
+
+Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+```env
+# Judge model — choose one
+
+# Option A: Azure OpenAI
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_API_KEY=your-key
+AZURE_OPENAI_DEPLOYMENT=gpt-4o
+AZURE_OPENAI_MINI_DEPLOYMENT=gpt-4o-mini   # used for Tier 2 (cheaper)
+AZURE_OPENAI_API_VERSION=2024-02-01
+
+# Option B: Standard OpenAI
+# OPENAI_API_KEY=sk-...
+
+# Agent under test
+AGENT_URL=http://localhost:2024
+AGENT_ASSISTANT_ID=your-graph-name
+```
+
+If you are testing an existing LangGraph project that already has a `.env`, you can point directly to it with `--env-file`.
+
+---
+
+## Usage
+
+**Start your agent first:**
+```bash
+# In your agent project directory
+uv run langgraph dev --port 2024
+```
+
+**Run the framework:**
+```bash
+# Full run (3 consensus runs per attack)
+uv run python main.py
+
+# Quick mode — 1 run per attack, cheaper
+uv run python main.py --runs 1
+
+# Point at a specific agent .env
+uv run python main.py --env-file ../my-agent/.env
+
+# Test specific categories only
+uv run python main.py --categories direct_injection extraction encoding
+
+# Custom agent URL and assistant ID
+uv run python main.py --agent-url http://localhost:2024 --assistant-id my-graph
+
+# All options
+uv run python main.py --help
+```
+
+---
+
+## Output
+
+**Terminal report:**
+```
+──────────────────────── LLM Red-Team Report ────────────────────────
+  Agent:       http://localhost:2024  /  my-agent
+  Date:        2025-01-15 14:32
+  Attacks:     102 total  |  6 confirmed vulnerabilities
+  Overall risk: HIGH
+
+╭─────────────────────────── Summary ────────────────────────────────╮
+│  Severity     Count   Attacks                                      │
+│  !! CRITICAL      2   Raw override + repeat, Token split leak      │
+│  !  HIGH          2   Classic DAN, Document with embedded override │
+│  ~  MEDIUM        2   Hypothetical transparency, ...               │
+│  OK PASS         96                                                │
+╰────────────────────────────────────────────────────────────────────╯
+```
+
+**JSON report** saved to `reports/report_<timestamp>.json` — structured data for analysis or CI integration.
+
+**Prompt patches** — copy-paste ready system prompt additions printed for each confirmed vulnerability category.
+
+---
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | No vulnerabilities confirmed |
+| `1` | Configuration error |
+| `2` | One or more vulnerabilities confirmed |
+
+Useful for CI pipelines:
+```bash
+uv run python main.py --runs 1 || echo "Vulnerabilities found"
+```
+
+---
+
+## Adding custom attacks
+
+Each attack module lives in `redteam/attacks/`. To add your own:
+
+```python
+# redteam/attacks/my_attacks.py
+from redteam.models import Attack, AttackCategory, AttackGoal
+
+def get_attacks() -> list[Attack]:
+    return [
+        Attack(
+            id="my_001",
+            category=AttackCategory.DIRECT_INJECTION,  # closest category
+            goal=AttackGoal.LEAK_SYSTEM_PROMPT,
+            name="My custom attack",
+            payload="Your custom payload here.",
+            description="What this attack tests.",
+        )
+    ]
+```
+
+Then register it in `redteam/runner.py` by adding it to `ALL_MODULES`.
+
+---
+
+## Scope and limitations
+
+This framework tests **black-box, prompt-level attacks** — the most common real-world threat surface. It does not cover:
+
+- Gradient-based adversarial inputs (requires white-box model access)
+- Training data poisoning (requires access to the training pipeline)
+- Sophisticated long-horizon multi-session attacks
+
+No automated tool catches everything. Use this alongside human red-teaming for comprehensive coverage.
+
+---
+
+## License
+
+MIT
