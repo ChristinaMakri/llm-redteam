@@ -84,7 +84,7 @@ class AgentClient:
 
     async def _extract_response(self, thread_id: str) -> AgentResponse:
         state = await self._client.threads.get_state(thread_id)
-        messages = state.values.get("messages", [])
+        messages = state["values"].get("messages", [])
 
         text = ""
         tool_calls: list[ToolCallInfo] = []
