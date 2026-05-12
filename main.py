@@ -169,6 +169,7 @@ async def _run_all(
         confidence_threshold=confidence,
         max_runs=max_runs,
         concurrency=concurrency,
+        repo_path=repo_path,
     )
 
     patches: list[dict] = []

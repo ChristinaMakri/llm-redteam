@@ -28,6 +28,7 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn
 from rich.table import Table
 
 from redteam.attacks.business_logic import get_attacks as bl_attacks
+from redteam.attacks.generated import generate_agent_attacks
 from redteam.attacks.competing_objectives import get_attacks as co_attacks
 from redteam.attacks.direct_injection import get_attacks as di_attacks
 from redteam.attacks.encoding import get_attacks as en_attacks
@@ -176,9 +177,19 @@ async def run_session(
     confidence_threshold: float = 0.80,
     max_runs: int = 4,
     concurrency: int = 3,
+    repo_path: str | None = None,
 ) -> RedTeamReport:
     """Top-level entry point. Runs all attacks and returns the full report."""
     attacks = load_attacks(categories)
+
+    if repo_path:
+        console.print(f"[dim]Generating agent-specific attacks from {repo_path} ...[/]")
+        generated = await generate_agent_attacks(repo_path)
+        if generated:
+            console.print(f"[dim]  → {len(generated)} agent-specific attacks added.[/]")
+            attacks = attacks + generated
+        else:
+            console.print("[yellow]  → Agent-specific attack generation failed — running standard suite only.[/]")
     runner = Runner(
         client,
         evaluator,
