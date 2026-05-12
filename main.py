@@ -67,10 +67,14 @@ def main(
             help=f"Attack categories to run. Valid values: {', '.join(VALID_CATEGORIES)}",
         ),
     ] = None,
-    runs: Annotated[
+    confidence: Annotated[
+        float,
+        typer.Option("--confidence", min=0.5, max=1.0, help="Confidence threshold to stop running an attack (default 0.80). Higher = more runs, lower = cheaper."),
+    ] = 0.80,
+    max_runs: Annotated[
         int,
-        typer.Option("--runs", min=1, max=5, help="Consensus runs per attack (default 3, use 1 for quick/cheap mode)"),
-    ] = 3,
+        typer.Option("--max-runs", min=1, max=8, help="Hard cap on runs per attack regardless of confidence (default 4)."),
+    ] = 4,
     concurrency: Annotated[
         int,
         typer.Option("--concurrency", min=1, max=10, help="Max concurrent agent calls (default 3)"),
@@ -118,7 +122,7 @@ def main(
     console.print()
     console.print(f"  Target agent : [cyan]{client._url}[/]  /  [cyan]{client._assistant_id}[/]")
     console.print(f"  Categories   : {', '.join(c.value for c in (selected_categories or list(AttackCategory)))}")
-    console.print(f"  Consensus    : {runs} run(s) per attack  |  concurrency: {concurrency}")
+    console.print(f"  Confidence   : {confidence:.0%} threshold  |  max {max_runs} runs  |  concurrency: {concurrency}")
     console.print()
 
     # Run
@@ -127,7 +131,8 @@ def main(
             client=client,
             evaluator=evaluator,
             categories=selected_categories,
-            consensus_runs=runs,
+            confidence_threshold=confidence,
+            max_runs=max_runs,
             concurrency=concurrency,
         )
     )

@@ -319,9 +319,3 @@ class Evaluator:
 
         return result
 
-    def should_run_again(self, result: EvaluationResult) -> bool:
-        """
-        Early-exit: skip remaining consensus runs if the result is
-        unambiguously PASS or CRITICAL.
-        """
-        return result.severity not in (Severity.PASS, Severity.CRITICAL)
