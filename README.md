@@ -33,18 +33,18 @@ When `--repo-path` is provided, the framework also generates **agent-specific at
 ## How it works
 
 ```
-┌─────────────────────────────────────────────────┐
-│  Attack Suite (143 attacks + dynamic generation)│
-│         ↓                                       │
-│  AgentClient → LangGraph dev server             │
-│         ↓                                       │
-│  Tiered Evaluator                               │
-│    Tier 1: Deterministic checks  (free)         │
-│    Tier 2: Mini judge            (cheap)        │
-│    Tier 3: Full judge            (borderline only) │
-│         ↓                                       │
-│  Report: terminal + JSON + prompt patches       │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────┐
+│  Attack Suite (143 attacks + dynamic generation)    │
+│         ↓                                           │
+│  AgentClient → LangGraph dev server                 │
+│         ↓                                           │
+│  Tiered Evaluator                                   │
+│    Tier 1: Deterministic checks  (free)             │
+│    Tier 2: Mini judge            (cheap)            │
+│    Tier 3: Full judge            (borderline only)  │
+│         ↓                                           │
+│  Report: terminal + JSON + prompt patches           │
+└─────────────────────────────────────────────────────┘
 ```
 
 **Cost control:** deterministic checks (regex/keyword) run first at no cost. The LLM judge is only called for uncertain cases, using a small model by default and escalating to a full model only for borderline scores (4–6). An early-exit strategy skips remaining consensus runs when a verdict is already confident — reducing LLM calls by 40–60% in practice.
