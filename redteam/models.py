@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Counter
+from collections import Counter
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,7 @@ class AttackCategory(str, Enum):
     INDIRECT_INJECTION = "indirect_injection"
     GREEK_LANGUAGE = "greek_language"
     BUSINESS_LOGIC = "business_logic"
+    SCOPE_ENFORCEMENT = "scope_enforcement"
 
 
 class AttackGoal(str, Enum):

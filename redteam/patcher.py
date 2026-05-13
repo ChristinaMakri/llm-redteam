@@ -82,23 +82,35 @@ Return JSON:
 
 _SKIP_DIRS = {
     ".venv", "__pycache__", "node_modules", ".git",
-    "sandbox", "mynbg-sandbox", ".claude", "docs", "tests",
+    "sandbox", "mynbg-sandbox", ".claude",
 }
-_MAX_PER_FILE = 5000
-_MAX_TOTAL = 18000
+_MAX_TOTAL = 50000
+
+# Directories with system prompts (highest priority, read fully)
+_PROMPT_DIRS = {"prompts", "assets", "system"}
+# Directories with design/operational docs (lower priority)
+_DOC_DIRS = {"design", "docs", "doc"}
+# Python keywords that indicate agent capability files
+_CODE_KEYWORDS = {
+    "node", "action", "execute", "fetch", "handler",
+    "api_client", "client", "state", "graph", "intent",
+    "tool", "prompt",
+}
 
 
 def _discover_repo_context(repo_path: str) -> dict[str, str]:
     """
-    Scan the repo for everything the agent uses: prompt files, tool definitions,
-    config, and structural files. Returns {relative_path: truncated_content}.
+    Scan the repo for a comprehensive picture of what the agent can do.
+    Returns {relative_path: truncated_content}.
 
-    Priority order (each group fills remaining budget):
-      1. langgraph.json — graph structure
-      2. .md files in dirs named prompts/assets/system — highest-value targets
-      3. Remaining .md files outside skip dirs
-      4. Python files with "prompt" or "tool" in their path
-      5. JSON config files (agent_config, settings)
+    Priority order:
+      1. langgraph.json — graph structure (1500 chars)
+      2. System prompt .md files (prompts/assets/system dirs) — 3000 chars each
+      3. Agent logic .py files (nodes, actions, fetch, api, state, graph) — 3000 chars each
+      4. E2E test files — reveal actual capabilities via concrete scenarios (3000 chars each)
+      5. Design/docs .md files — 2000 chars each
+      6. JSON config files — 2000 chars each
+      7. Remaining .md files — 1000 chars each
     """
     root = Path(repo_path)
     found: dict[str, str] = {}
@@ -107,7 +119,7 @@ def _discover_repo_context(repo_path: str) -> dict[str, str]:
     def _skip(p: Path) -> bool:
         return any(part in _SKIP_DIRS for part in p.parts)
 
-    def _add(path: Path, limit: int = _MAX_PER_FILE) -> None:
+    def _add(path: Path, limit: int) -> None:
         nonlocal total
         if path in _added or total >= _MAX_TOTAL:
             return
@@ -125,31 +137,45 @@ def _discover_repo_context(repo_path: str) -> dict[str, str]:
     if lj.exists():
         _add(lj, limit=1500)
 
-    # 2. .md files in dirs explicitly named prompts / assets / system
+    # 2. System prompt .md files
     for f in sorted(root.rglob("*.md")):
         if _skip(f):
             continue
-        if any(part.lower() in {"prompts", "assets", "system"} for part in f.parts):
-            _add(f)
+        if any(part.lower() in _PROMPT_DIRS for part in f.parts):
+            _add(f, limit=3000)
 
-    # 3. Remaining .md files (catch other layouts)
-    for f in sorted(root.rglob("*.md")):
-        if not _skip(f):
-            _add(f)
-
-    # 4. Python files with "prompt" or "tool" in their path
+    # 3. Agent logic .py files (nodes, actions, fetchers, api clients, state, graph)
     for f in sorted(root.rglob("*.py")):
         if _skip(f):
             continue
-        if any(k in f.as_posix().lower() for k in ("prompt", "tool")):
-            _add(f)
+        path_lower = f.as_posix().lower()
+        if any(k in path_lower for k in _CODE_KEYWORDS):
+            _add(f, limit=3000)
 
-    # 5. JSON config files
+    # 4. E2E test files — concrete evidence of what the agent can actually do
+    for f in sorted(root.rglob("test_*.py")):
+        if _skip(f):
+            continue
+        _add(f, limit=3000)
+
+    # 5. Design/docs .md files
+    for f in sorted(root.rglob("*.md")):
+        if _skip(f):
+            continue
+        if any(part.lower() in _DOC_DIRS for part in f.parts):
+            _add(f, limit=2000)
+
+    # 6. JSON config files
     for f in sorted(root.rglob("*.json")):
         if _skip(f):
             continue
         if any(k in f.stem.lower() for k in ("agent_config", "settings", "config")):
-            _add(f, limit=3000)
+            _add(f, limit=2000)
+
+    # 7. Remaining .md files (catch non-standard layouts)
+    for f in sorted(root.rglob("*.md")):
+        if not _skip(f):
+            _add(f, limit=1000)
 
     return found
 
@@ -250,4 +276,23 @@ async def generate_ai_patches(
     if low_tier:
         patches.extend(await _call_patcher(_build_prompt(low_tier)))
 
+    if repo_path:
+        patches = _validate_patches(patches, repo_path)
+
+    return patches
+
+
+def _validate_patches(patches: list[dict], repo_path: str) -> list[dict]:
+    """
+    For file-specific patches, verify the proposed file actually exists in the repo.
+    Patches referencing non-existent files are flagged with a warning field so the
+    caller can surface them without silently dropping them.
+    """
+    root = Path(repo_path)
+    for patch in patches:
+        file_rel = patch.get("file")
+        if not file_rel:
+            continue
+        if not (root / file_rel).exists():
+            patch["warning"] = f"File '{file_rel}' not found in repo — patch may need manual placement."
     return patches

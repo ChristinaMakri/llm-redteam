@@ -2,9 +2,9 @@
 
 Automated red-teaming framework for prompt-level attacks against [LangGraph](https://github.com/langchain-ai/langgraph) agents.
 
-Runs a comprehensive suite of **136 attacks** across 10 categories against any running LangGraph agent, evaluates each response with a tiered multi-signal judge, and proposes concrete system prompt improvements based on findings.
+Runs a comprehensive suite of **143 attacks** across 11 categories against any running LangGraph agent, evaluates each response with a tiered multi-signal judge, and proposes concrete system prompt improvements based on findings.
 
-**Attack coverage:** 8 categories are universal (any agent, any language). 2 categories are domain-specific extensions targeting banking/financial assistants: Greek-language attacks and business logic attacks (confirmation bypass, cross-customer data probes, privilege escalation). Skip them with `--categories` if your agent is outside this domain.
+**Attack coverage:** 9 categories are universal (any agent, any language). 2 categories are domain-specific extensions targeting banking/financial assistants: Greek-language attacks and business logic attacks (confirmation bypass, cross-customer data probes, privilege escalation). Skip them with `--categories` if your agent is outside this domain.
 
 ---
 
@@ -22,8 +22,11 @@ Runs a comprehensive suite of **136 attacks** across 10 categories against any r
 | Indirect Injection | 9 | Instructions hidden in documents, API responses, structured data |
 | Greek Language | 12 | DAN, extraction, authority framing, emotional pressure — all in Greek ⚑ |
 | Business Logic | 10 | Confirmation bypass, cross-customer data probes, privilege escalation ⚑ |
+| Scope Enforcement | 7 | Off-topic redirections, gradual drift, emergency overrides, hypothetical jailbreaks |
 
 ⚑ Banking/financial domain extension — skip with `--categories` if not applicable.
+
+When `--repo-path` is provided, the framework also generates **agent-specific attacks** dynamically: business logic attacks targeting the agent's actual rules, and borderline scope attacks based on what the agent is designed to do.
 
 ---
 
@@ -31,7 +34,7 @@ Runs a comprehensive suite of **136 attacks** across 10 categories against any r
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Attack Suite (136 attacks)                     │
+│  Attack Suite (143 attacks + dynamic generation)│
 │         ↓                                       │
 │  AgentClient → LangGraph dev server             │
 │         ↓                                       │
@@ -107,11 +110,11 @@ uv run langgraph dev --port 2024
 
 **Run the framework:**
 ```bash
-# Full run (3 consensus runs per attack)
+# Full run — adaptive confidence-based stopping (1-4 runs per attack)
 uv run python main.py
 
 # Quick mode — 1 run per attack, cheaper
-uv run python main.py --runs 1
+uv run python main.py --max-runs 1
 
 # Point at a specific agent .env
 uv run python main.py --env-file ../my-agent/.env
@@ -125,6 +128,12 @@ uv run python main.py --agent-url http://localhost:2024 --assistant-id my-graph
 # AI-generated targeted patches — analyses each specific finding and proposes
 # concrete system prompt additions (uses one extra LLM call after the run)
 uv run python main.py --ai-patches
+
+# Repo-aware run: generates agent-specific attacks + file-specific patches
+uv run python main.py --repo-path ../my-agent/ --ai-patches
+
+# Dry run — list attacks that would execute without sending any messages
+uv run python main.py --dry-run --categories scope_enforcement
 
 # All options
 uv run python main.py --help
@@ -167,7 +176,7 @@ uv run python main.py --help
 
 Useful for CI pipelines:
 ```bash
-uv run python main.py --runs 1 || echo "Vulnerabilities found"
+uv run python main.py --max-runs 1 || echo "Vulnerabilities found"
 ```
 
 ---

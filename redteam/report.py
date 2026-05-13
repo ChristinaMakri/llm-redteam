@@ -20,6 +20,7 @@ from rich.rule import Rule
 from rich.table import Table
 from rich.text import Text
 
+from redteam.evaluator import CostTracker
 from redteam.models import AttackCategory, AttackResult, RedTeamReport, Severity
 
 console = Console()
@@ -136,12 +137,18 @@ _PATCHES: dict[AttackCategory, str] = {
 # Terminal report
 # ---------------------------------------------------------------------------
 
-def print_report(report: RedTeamReport, ai_patches: list[dict] | None = None) -> None:
+def print_report(
+    report: RedTeamReport,
+    ai_patches: list[dict] | None = None,
+    cost: CostTracker | None = None,
+) -> None:
     """Print the full report to the terminal."""
     _print_header(report)
     _print_summary(report)
     _print_findings(report)
     _print_patches(report, ai_patches)
+    if cost:
+        _print_cost(cost)
 
 
 def _print_header(report: RedTeamReport) -> None:
@@ -243,11 +250,14 @@ def _print_patches(report: RedTeamReport, ai_patches: list[dict] | None = None) 
                 patch_text = patch.get("patch_text", "").strip()
                 reasoning = patch.get("reasoning", "").strip()
                 if patch_text:
+                    warning = patch.get("warning", "")
                     body = (
                         f"[bold]{name}[/]\n"
                         f"[cyan]File:[/] {file_path}\n"
                         f"[cyan]Where:[/] {location}\n"
                     )
+                    if warning:
+                        body += f"[yellow]⚠ {warning}[/]\n"
                     if reasoning:
                         body += f"[dim]{reasoning}[/]\n"
                     body += f"\n{patch_text}"
@@ -275,6 +285,15 @@ def _print_patches(report: RedTeamReport, ai_patches: list[dict] | None = None) 
                 console.print(Panel(patch, border_style="dim cyan", padding=(0, 1)))
 
 
+def _print_cost(cost: CostTracker) -> None:
+    console.print()
+    console.print(Rule("[bold]LLM Cost Summary[/]", style="dim"))
+    console.print(f"  Tier 1 (free/deterministic) : {cost.tier1_exits} exits")
+    console.print(f"  Tier 2 (mini model)         : {cost.tier2_calls} calls")
+    console.print(f"  Tier 3 (full model)         : {cost.tier3_calls} calls")
+    console.print(f"  Total LLM calls             : [bold]{cost.total_llm_calls}[/]")
+
+
 # ---------------------------------------------------------------------------
 # JSON export
 # ---------------------------------------------------------------------------
@@ -283,9 +302,10 @@ def save_json(
     report: RedTeamReport,
     output_dir: str = "reports",
     ai_patches: list[dict] | None = None,
+    cost: CostTracker | None = None,
 ) -> Path:
     """Save the full report as a JSON file and return the path."""
-    Path(output_dir).mkdir(exist_ok=True)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = Path(output_dir) / f"report_{timestamp}.json"
 
@@ -296,6 +316,12 @@ def save_json(
         "total_attacks": report.total_attacks,
         "overall_risk": report.overall_risk.value,
         "confirmed_vulnerabilities": len(report.confirmed_vulnerabilities),
+        "cost": {
+            "tier1_exits": cost.tier1_exits,
+            "tier2_calls": cost.tier2_calls,
+            "tier3_calls": cost.tier3_calls,
+            "total_llm_calls": cost.total_llm_calls,
+        } if cost else None,
         "ai_patches": ai_patches or [],
         "results": [
             {

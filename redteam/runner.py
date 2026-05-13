@@ -28,7 +28,8 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn
 from rich.table import Table
 
 from redteam.attacks.business_logic import get_attacks as bl_attacks
-from redteam.attacks.generated import generate_agent_attacks
+from redteam.attacks.scope_enforcement import get_attacks as se_attacks
+from redteam.attacks.generated import generate_agent_attacks, generate_scope_attacks
 from redteam.attacks.competing_objectives import get_attacks as co_attacks
 from redteam.attacks.direct_injection import get_attacks as di_attacks
 from redteam.attacks.encoding import get_attacks as en_attacks
@@ -55,6 +56,7 @@ ALL_MODULES: dict[AttackCategory, callable] = {
     AttackCategory.INDIRECT_INJECTION:   ii_attacks,
     AttackCategory.GREEK_LANGUAGE:       el_attacks,
     AttackCategory.BUSINESS_LOGIC:       bl_attacks,
+    AttackCategory.SCOPE_ENFORCEMENT:    se_attacks,
 }
 
 
@@ -184,12 +186,20 @@ async def run_session(
 
     if repo_path:
         console.print(f"[dim]Generating agent-specific attacks from {repo_path} ...[/]")
-        generated = await generate_agent_attacks(repo_path)
+        generated, scope_generated = await asyncio.gather(
+            generate_agent_attacks(repo_path),
+            generate_scope_attacks(repo_path),
+        )
         if generated:
-            console.print(f"[dim]  → {len(generated)} agent-specific attacks added.[/]")
+            console.print(f"[dim]  → {len(generated)} agent-specific business logic attacks added.[/]")
             attacks = attacks + generated
         else:
-            console.print("[yellow]  → Agent-specific attack generation failed — running standard suite only.[/]")
+            console.print("[yellow]  → Business logic attack generation failed — skipping.[/]")
+        if scope_generated:
+            console.print(f"[dim]  → {len(scope_generated)} agent-specific scope boundary attacks added.[/]")
+            attacks = attacks + scope_generated
+        else:
+            console.print("[yellow]  → Scope boundary attack generation failed — skipping.[/]")
     runner = Runner(
         client,
         evaluator,

@@ -40,7 +40,7 @@ from redteam.evaluator import Evaluator
 from redteam.models import AttackCategory
 from redteam.patcher import generate_ai_patches
 from redteam.report import print_report, save_json
-from redteam.runner import run_session
+from redteam.runner import load_attacks, run_session
 
 app = typer.Typer(add_completion=False, pretty_exceptions_show_locals=False)
 console = Console()
@@ -93,6 +93,10 @@ def main(
         str | None,
         typer.Option("--repo-path", help="Path to the agent's repo — enables file-specific patches against actual prompt files"),
     ] = None,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="List attacks that would run without executing them, then exit"),
+    ] = False,
 ) -> None:
     # Load environment
     env_path = Path(env_file) if env_file else Path(".env")
@@ -111,6 +115,22 @@ def main(
             console.print(f"Valid options: {', '.join(VALID_CATEGORIES)}")
             raise typer.Exit(1)
         selected_categories = [AttackCategory(c) for c in categories]
+
+    # Dry-run: list attacks and exit
+    if dry_run:
+        attacks = load_attacks(selected_categories)
+        console.print()
+        console.print(f"  [bold]Dry run — {len(attacks)} attacks would execute:[/]\n")
+        from collections import Counter
+        by_cat = Counter(a.category.value for a in attacks)
+        for cat, count in sorted(by_cat.items()):
+            console.print(f"  [cyan]{cat}[/] ({count})")
+            for a in attacks:
+                if a.category.value == cat:
+                    turns = f"  [{len(a.payload)}-turn]" if a.is_multi_turn else ""
+                    console.print(f"    [dim]{a.id}[/] {a.name}{turns}")
+        console.print()
+        raise typer.Exit(0)
 
     # Build client
     client = AgentClient.from_env()
@@ -142,10 +162,10 @@ def main(
     )
 
     # Print terminal report
-    print_report(report, ai_patches=patches or None)
+    print_report(report, ai_patches=patches or None, cost=evaluator.tracker)
 
     # Save JSON
-    path = save_json(report, output_dir=output, ai_patches=patches or None)
+    path = save_json(report, output_dir=output, ai_patches=patches or None, cost=evaluator.tracker)
     console.print(f"\n[dim]Full report saved to: {path}[/]")
 
     if any(r.vulnerability_confirmed for r in report.results):
